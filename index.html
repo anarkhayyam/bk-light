@@ -6,25 +6,29 @@
   <meta name="theme-color" content="#2b1c10" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./styles.css" />
-  <title>БК Light</title>
+  <title>АнтиБК Light</title>
 </head>
 <body>
   <div class="frame">
     <header class="topbar">
-      <div class="logo">БК Light</div>
+      <div class="logo">АнтиБК Light</div>
       <div class="right">
         <span id="netBadge" class="badge offline">OFFLINE</span>
+        <button id="syncBtn" class="btn mini">SYNC</button>
       </div>
     </header>
 
     <main id="screen" class="screen"></main>
 
     <footer class="bottombar">
+      <button class="tab" data-go="city">Город</button>
       <button class="tab" data-go="fight">Бой</button>
+      <button class="tab" data-go="shop">Магазин</button>
       <button class="tab" data-go="info">Инфо</button>
     </footer>
   </div>
 
+  <script src="./api.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
