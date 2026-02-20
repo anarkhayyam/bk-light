@@ -177,3 +177,23 @@ body{
   background:rgba(0,0,0,.18);
   min-height:90px;
 }
+/* ===== ЛОГ БОЯ С ПРОКРУТКОЙ ===== */
+
+.logBox{
+  max-height: 180px;      /* высота окна лога */
+  overflow-y: auto;       /* вертикальный скролл */
+  scrollbar-width: thin;  /* тонкий скролл (Firefox) */
+}
+
+/* для Safari / Chrome */
+.logBox::-webkit-scrollbar{
+  width: 6px;
+}
+.logBox::-webkit-scrollbar-track{
+  background: rgba(0,0,0,0.2);
+  border-radius: 10px;
+}
+.logBox::-webkit-scrollbar-thumb{
+  background: rgba(202,167,106,0.6);
+  border-radius: 10px;
+}
