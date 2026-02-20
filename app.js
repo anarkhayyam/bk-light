@@ -22,6 +22,8 @@ const screen = document.getElementById("screen");
 
 function renderFight(){
 
+  let p = state.player;
+
   let bot = {
     nick: "Бот",
     hpMax: 28,
@@ -31,12 +33,46 @@ function renderFight(){
 
   let selectedHit = null;
   let selectedBlock = null;
+  let round = 1;
+  let logLines = [];
 
   screen.innerHTML = `
     <div class="card">
       <h2 class="title">Поле боя</h2>
-      <div>${state.player.nick} HP: <b id="php">${state.player.hp}</b></div>
-      <div>${bot.nick} HP: <b id="bhp">${bot.hp}</b></div>
+
+      <div class="battlefield">
+        <!-- LEFT -->
+        <div class="fighter">
+          <div class="fhead">
+            <div class="avatar">${(p.nick||"A")[0].toUpperCase()}</div>
+            <div>
+              <div class="fname">${p.nick}</div>
+              <div class="fsub">Уровень: ${p.level}</div>
+            </div>
+          </div>
+          <div class="hpbar"><div id="phpFill" class="hpfill"></div></div>
+          <div class="fsub">HP: <b id="php">${p.hp}</b> / ${p.hpMax}</div>
+        </div>
+
+        <!-- CENTER -->
+        <div class="centerBox">
+          <div class="centerTitle">Раунд: <span id="roundNum">${round}</span></div>
+          <div class="logBox"><div id="log" class="log"></div></div>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="fighter">
+          <div class="fhead">
+            <div class="avatar">${(bot.nick||"B")[0].toUpperCase()}</div>
+            <div>
+              <div class="fname">${bot.nick}</div>
+              <div class="fsub">Противник</div>
+            </div>
+          </div>
+          <div class="hpbar"><div id="bhpFill" class="hpfill"></div></div>
+          <div class="fsub">HP: <b id="bhp">${bot.hp}</b> / ${bot.hpMax}</div>
+        </div>
+      </div>
     </div>
 
     <div class="grid2">
@@ -52,14 +88,30 @@ function renderFight(){
     </div>
 
     <div class="card">
-      <button class="btn" id="roundBtn">Раунд</button>
-      <div id="log"></div>
+      <div class="row">
+        <button class="btn" id="roundBtn">Раунд</button>
+        <button class="btn" id="restBtn">Отдых</button>
+      </div>
     </div>
   `;
 
   const php = document.getElementById("php");
   const bhp = document.getElementById("bhp");
+  const phpFill = document.getElementById("phpFill");
+  const bhpFill = document.getElementById("bhpFill");
+  const roundNum = document.getElementById("roundNum");
   const log = document.getElementById("log");
+
+  function setBars(){
+    phpFill.style.width = Math.max(0, Math.min(100, Math.round((p.hp/p.hpMax)*100))) + "%";
+    bhpFill.style.width = Math.max(0, Math.min(100, Math.round((bot.hp/bot.hpMax)*100))) + "%";
+  }
+
+  function pushLog(t){
+    logLines.unshift(t);
+    logLines = logLines.slice(0, 10);
+    log.innerHTML = logLines.join("<br>");
+  }
 
   screen.querySelectorAll("[data-hit]").forEach(btn=>{
     btn.onclick = ()=>{
@@ -77,30 +129,45 @@ function renderFight(){
     };
   });
 
+  document.getElementById("restBtn").onclick = ()=>{
+    p.hp = Math.min(p.hpMax, p.hp + 3);
+    php.textContent = p.hp;
+    setBars();
+    pushLog("Ты отдыхаешь: +3 HP.");
+  };
+
   document.getElementById("roundBtn").onclick = ()=>{
     if(!selectedHit || !selectedBlock){
-      log.innerHTML = "Выбери удар и блок.";
+      pushLog("Выбери удар и блок.");
       return;
     }
 
     const botHit = ZONES[Math.floor(Math.random()*5)].id;
     const botBlock = ZONES[Math.floor(Math.random()*5)].id;
 
-    if(selectedHit !== botBlock){
-      bot.hp -= 5;
+    // ты бьёшь
+    if(selectedHit === botBlock){
+      pushLog(`Раунд ${round}: Ты → ${selectedHit}, бот блокирует.`);
+    } else {
+      bot.hp = Math.max(0, bot.hp - 5);
       bhp.textContent = bot.hp;
+      pushLog(`Раунд ${round}: Ты → ${selectedHit}, попал (-5).`);
     }
 
-    if(botHit !== selectedBlock){
-      state.player.hp -= 4;
-      php.textContent = state.player.hp;
+    // бот бьёт
+    if(botHit === selectedBlock){
+      pushLog(`Бот → ${botHit}, ты блокируешь.`);
+    } else {
+      p.hp = Math.max(0, p.hp - 4);
+      php.textContent = p.hp;
+      pushLog(`Бот → ${botHit}, попал (-4).`);
     }
 
-    log.innerHTML = `
-      Ты: ${selectedHit} | Бот блок: ${botBlock}<br>
-      Бот: ${botHit} | Твой блок: ${selectedBlock}
-    `;
+    setBars();
+    round += 1;
+    roundNum.textContent = round;
   };
-}
 
-renderFight();
+  setBars();
+  pushLog("Готов к бою.");
+}
