@@ -464,3 +464,28 @@ function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
 
 // старт
 go("fight");
+function resolveAttack(attStats, hitZone, defenderBlockZone, defStats){
+
+  const blocked = (hitZone === defenderBlockZone);
+  if(blocked){
+    return { blocked:true, damage:0, isCrit:false, isDodge:false };
+  }
+
+  const dodgeChance = Math.min(0.30, defStats.agi * 0.02);
+  const isDodge = Math.random() < dodgeChance;
+  if(isDodge){
+    return { blocked:false, damage:0, isCrit:false, isDodge:true };
+  }
+
+  let dmg = 2 + Math.floor(attStats.str / 2);
+
+  const critChance = Math.min(0.35, 0.05 + attStats.intu * 0.02);
+  const isCrit = Math.random() < critChance;
+  if(isCrit){
+    dmg = Math.floor(dmg * 1.7);
+  }
+
+  dmg += Math.floor(Math.random()*2);
+
+  return { blocked:false, damage:dmg, isCrit, isDodge:false };
+}
