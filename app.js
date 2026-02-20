@@ -1,4 +1,4 @@
-const STORAGE_KEY = "antibk_light_save_v4";
+const STORAGE_KEY = "antibk_light_save_v5";
 
 const ZONES = [
   { id:"head",  name:"Голова" },
@@ -62,15 +62,14 @@ function loadState(){
       if(!(k in s.equipped)) s.equipped[k] = null;
     }
 
-    // поджать HP по текущему max
-    const d = computeDerived(s);
-    s.player.hp = clamp(s.player.hp, 0, d.hpMax);
-
-    // если где-то остался tasbeh от старых версий — вычистим
+    // вычистим старый tasbeh, если вдруг остался
     s.inventory = s.inventory.filter(id => id !== "tasbeh");
     for(const k of Object.keys(s.equipped)){
       if(s.equipped[k] === "tasbeh") s.equipped[k] = null;
     }
+
+    const d = computeDerived(s);
+    s.player.hp = clamp(s.player.hp, 0, d.hpMax);
 
     return s;
   }catch{
@@ -148,7 +147,7 @@ function go(where){
   return renderCity();
 }
 
-// Мини-стили: fullwidth-кнопка
+// Мини-стили
 (function ensureMiniStyle(){
   if(document.getElementById("miniStyle")) return;
   const st = document.createElement("style");
@@ -160,6 +159,21 @@ function go(where){
   `;
   document.head.appendChild(st);
 })();
+
+// ====== Общие для инфо/магазина ======
+function slotLabel(slot){
+  return ({ weapon:"Оружие", armor:"Броня", gloves:"Перчатки", amulet:"Амулет" }[slot] || slot);
+}
+function fmtSigned(n){ return (n>=0?`+${n}`:`${n}`); }
+function bonusesToText(b){
+  const parts = [];
+  if(b.str) parts.push(`Сила ${fmtSigned(b.str)}`);
+  if(b.agi) parts.push(`Ловкость ${fmtSigned(b.agi)}`);
+  if(b.intu) parts.push(`Интуиция ${fmtSigned(b.intu)}`);
+  if(b.end) parts.push(`Выносливость ${fmtSigned(b.end)}`);
+  if(b.hpMax) parts.push(`HPmax ${fmtSigned(b.hpMax)}`);
+  return parts.join(", ") || "без бонусов";
+}
 
 // ====== Город ======
 function slotName(slot){
@@ -202,26 +216,7 @@ function renderCity(){
   document.getElementById("toInfo").onclick = ()=>go("info");
 }
 
-// ====== Инфо + статы + экип + инвентарь ======
-function slotLabel(slot){
-  return ({
-    weapon:"Оружие",
-    armor:"Броня",
-    gloves:"Перчатки",
-    amulet:"Амулет"
-  }[slot] || slot);
-}
-function fmtSigned(n){ return (n>=0?`+${n}`:`${n}`); }
-function bonusesToText(b){
-  const parts = [];
-  if(b.str) parts.push(`Сила ${fmtSigned(b.str)}`);
-  if(b.agi) parts.push(`Ловкость ${fmtSigned(b.agi)}`);
-  if(b.intu) parts.push(`Интуиция ${fmtSigned(b.intu)}`);
-  if(b.end) parts.push(`Выносливость ${fmtSigned(b.end)}`);
-  if(b.hpMax) parts.push(`HPmax ${fmtSigned(b.hpMax)}`);
-  return parts.join(", ") || "без бонусов";
-}
-
+// ====== Инфо ======
 function statRow(key, label, base, bonus, total){
   const canAdd = state.player.statPoints > 0;
   return `
@@ -231,7 +226,6 @@ function statRow(key, label, base, bonus, total){
     </div>
   `;
 }
-
 function equipRow(slot, label){
   const id = state.equipped[slot];
   const name = id ? (ITEM_DB[id]?.name || id) : "—";
@@ -242,12 +236,10 @@ function equipRow(slot, label){
     </div>
   `;
 }
-
 function renderInventoryList(){
   if(state.inventory.length === 0){
     return `<div class="small">Пусто. Купи предметы в магазине.</div>`;
   }
-
   return state.inventory.map(id=>{
     const it = ITEM_DB[id];
     if(!it) return "";
@@ -319,7 +311,6 @@ function renderInfo(){
     </div>
   `;
 
-  // +1 статы
   screen.querySelectorAll("[data-addstat]").forEach(btn=>{
     btn.onclick = ()=>{
       const key = btn.dataset.addstat;
@@ -333,7 +324,6 @@ function renderInfo(){
     };
   });
 
-  // снять
   screen.querySelectorAll("[data-unequip]").forEach(btn=>{
     btn.onclick = ()=>{
       const slot = btn.dataset.unequip;
@@ -345,7 +335,6 @@ function renderInfo(){
     };
   });
 
-  // надеть
   screen.querySelectorAll("[data-equip]").forEach(btn=>{
     btn.onclick = ()=>{
       const itemId = btn.dataset.equip;
@@ -430,7 +419,6 @@ function rewardWin(){
     p.hpMaxBase += 5;
     p.statPoints += 3;
 
-    // восстановление до фулла при апе
     const d = computeDerived(state);
     p.hp = d.hpMax;
 
@@ -442,15 +430,11 @@ function rewardWin(){
 function renderFight(){
   const p = state.player;
 
-  // состояние боя
   let inBattle = false;
-  let finished = false;
   let round = 1;
   let selectedHit = null;
   let selectedBlock = null;
   let logLines = [];
-
-  // текущий бот создаётся при старте боя
   let bot = null;
 
   function createBot(){
@@ -481,7 +465,6 @@ function renderFight(){
           <div class="fsub">HP: <b id="php">${p.hp}</b> / <span id="phpMax">${d0.hpMax}</span></div>
         </div>
 
-        <!-- CENTER: пусто, только кнопка Новый бой -->
         <div class="centerBox">
           <div class="centerTitle">Раунд: <span id="roundNum">${round}</span></div>
           <div class="roundline">&nbsp;</div>
@@ -530,7 +513,6 @@ function renderFight(){
   const phpMaxEl = document.getElementById("phpMax");
   const phpFill = document.getElementById("phpFill");
 
-  const bAv = document.getElementById("bAv");
   const bName = document.getElementById("bName");
   const bhp = document.getElementById("bhp");
   const bhpMaxEl = document.getElementById("bhpMax");
@@ -573,6 +555,10 @@ function renderFight(){
     stepBtn.disabled = !on;
   }
 
+  function setNewFightEnabled(on){
+    newFightBtn.disabled = !on;
+  }
+
   function resetSelections(){
     selectedHit = null;
     selectedBlock = null;
@@ -581,11 +567,13 @@ function renderFight(){
   }
 
   function endBattle(resultText){
-    finished = true;
     inBattle = false;
     enableBattleUI(false);
 
-    // авто-фулл хп после боя
+    // включить Новый бой снова
+    setNewFightEnabled(true);
+
+    // авто-фулл HP после боя
     const dd = refreshDerived();
     state.player.hp = dd.hpMax;
     php.textContent = state.player.hp;
@@ -594,8 +582,6 @@ function renderFight(){
 
     pushLog(resultText);
     pushLog(`Жизнь восстановлена полностью (${dd.hpMax}).`);
-
-    // Новый бой остаётся по центру, с него и начинаем следующий
   }
 
   // выбор удар/блок
@@ -616,13 +602,12 @@ function renderFight(){
     };
   });
 
-  // Новый бой — старт
+  // старт боя
   newFightBtn.onclick = ()=>{
     const dd = refreshDerived();
 
     bot = createBot();
     inBattle = true;
-    finished = false;
     round = 1;
     roundNum.textContent = round;
 
@@ -630,18 +615,20 @@ function renderFight(){
     logLines = [];
     renderFullLog();
 
-    // заполняем противника
-    bAv.textContent = "B";
     bName.textContent = bot.nick;
     bhp.textContent = bot.hp;
     bhpMaxEl.textContent = bot.hpMax;
     setBars(dd);
 
     enableBattleUI(true);
+
+    // во время боя кнопку “Новый бой” отключаем
+    setNewFightEnabled(false);
+
     pushLog("Бой начался.");
   };
 
-  // Ход
+  // ход
   stepBtn.onclick = ()=>{
     if(!inBattle) return;
 
@@ -675,7 +662,7 @@ function renderFight(){
       return;
     }
 
-    // бот бьёт
+    // бот бьё
     if(botHit === selectedBlock){
       pushLog(`Раунд ${round}: Бот → ${zoneName(botHit)}. Ты блокируешь.`);
     } else {
@@ -696,235 +683,12 @@ function renderFight(){
     roundNum.textContent = round;
   };
 
-  // initial bars
+  // init
   const ddInit = computeDerived(state);
   setBars(ddInit);
+  enableBattleUI(false);
+  setNewFightEnabled(true);
   pushLog("Нажми “Новый бой”, чтобы начать.");
-}
-
-// ====== Левел-ап ======
-function rewardWin(){
-  const p = state.player;
-  p.exp += 10;
-  p.money += 8;
-
-  while(p.exp >= p.level * 50){
-    p.exp -= p.level * 50;
-    p.level += 1;
-    p.hpMaxBase += 5;
-    p.statPoints += 3;
-
-    const d = computeDerived(state);
-    p.hp = d.hpMax;
-
-    alert(`Уровень повышен! Теперь уровень ${p.level}. +3 очка статов.`);
-  }
-}
-
-// ====== Магазин/Инфо требуют ITEM_DB и defaultState уже есть ======
-
-function renderShop(){
-  const p = state.player;
-  const items = Object.values(ITEM_DB);
-
-  screen.innerHTML = `
-    <div class="card">
-      <h2 class="title">Магазин</h2>
-      <div>Деньги: <b>${p.money}</b></div>
-      <div class="small">Купленные предметы попадают в Инвентарь.</div>
-    </div>
-
-    ${items.map(it=>{
-      const owned = state.inventory.includes(it.id);
-      return `
-        <div class="card">
-          <div><b>${escapeHtml(it.name)}</b> — ${it.price} 💰</div>
-          <div class="small">Слот: ${slotLabel(it.slot)} | ${escapeHtml(bonusesToText(it.bonuses))}</div>
-          <div class="row" style="margin-top:10px;">
-            <button class="btn" data-buy="${it.id}" ${owned ? "disabled" : ""}>
-              ${owned ? "Куплено" : "Купить"}
-            </button>
-          </div>
-        </div>
-      `;
-    }).join("")}
-  `;
-
-  screen.querySelectorAll("[data-buy]").forEach(b=>{
-    b.onclick = ()=>{
-      const id = b.dataset.buy;
-      const it = ITEM_DB[id];
-      if(!it) return;
-      if(state.inventory.includes(id)) return;
-      if(p.money < it.price) return alert("Не хватает денег.");
-
-      p.money -= it.price;
-      state.inventory.push(id);
-      saveState();
-      renderShop();
-    };
-  });
-}
-
-function slotLabel(slot){
-  return ({ weapon:"Оружие", armor:"Броня", gloves:"Перчатки", amulet:"Амулет" }[slot] || slot);
-}
-function fmtSigned(n){ return (n>=0?`+${n}`:`${n}`); }
-function bonusesToText(b){
-  const parts = [];
-  if(b.str) parts.push(`Сила ${fmtSigned(b.str)}`);
-  if(b.agi) parts.push(`Ловкость ${fmtSigned(b.agi)}`);
-  if(b.intu) parts.push(`Интуиция ${fmtSigned(b.intu)}`);
-  if(b.end) parts.push(`Выносливость ${fmtSigned(b.end)}`);
-  if(b.hpMax) parts.push(`HPmax ${fmtSigned(b.hpMax)}`);
-  return parts.join(", ") || "без бонусов";
-}
-
-function renderInfo(){
-  const p = state.player;
-  const d = computeDerived(state);
-
-  screen.innerHTML = `
-    <div class="card">
-      <h2 class="title">Инфо</h2>
-      <div>Ник: <b>${escapeHtml(p.nick)}</b></div>
-      <div>Уровень: <b>${p.level}</b> | Опыт: <b>${p.exp}</b> | Деньги: <b>${p.money}</b></div>
-      <div>HP: <b>${p.hp}/${d.hpMax}</b> <span class="pill">HPmax база ${p.hpMaxBase} + экип ${d.bonus.hpMax}</span></div>
-      <div class="hr"></div>
-
-      <div class="row" style="align-items:center;justify-content:space-between;">
-        <div><b>Распределение статов</b></div>
-        <div class="pill">Очки: <b>${p.statPoints}</b></div>
-      </div>
-      <div class="small">Итог = база + экипировка</div>
-
-      ${statRow("str","Сила", p.statsBase.str, d.bonus.str, d.stats.str)}
-      ${statRow("agi","Ловкость", p.statsBase.agi, d.bonus.agi, d.stats.agi)}
-      ${statRow("intu","Интуиция", p.statsBase.intu, d.bonus.intu, d.stats.intu)}
-      ${statRow("end","Выносливость", p.statsBase.end, d.bonus.end, d.stats.end)}
-
-      <div class="hr"></div>
-      <div><b>${escapeHtml(p.bio)}</b></div>
-    </div>
-
-    <div class="card">
-      <h3 class="title">Ник</h3>
-      <input class="input" id="nick" value="${escapeAttr(p.nick)}" maxlength="16" />
-      <div class="row" style="margin-top:10px;">
-        <button class="btn" id="saveNick">Сохранить</button>
-        <button class="btn" id="reset">Сбросить всё</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3 class="title">Экипировка (слоты)</h3>
-      ${equipRow("weapon","Оружие")}
-      ${equipRow("armor","Броня")}
-      ${equipRow("gloves","Перчатки")}
-      ${equipRow("amulet","Амулет")}
-      <div class="small" style="margin-top:8px;">Нажми “Снять”, чтобы убрать предмет со слота.</div>
-    </div>
-
-    <div class="card">
-      <h3 class="title">Инвентарь</h3>
-      ${renderInventoryList()}
-    </div>
-  `;
-
-  screen.querySelectorAll("[data-addstat]").forEach(btn=>{
-    btn.onclick = ()=>{
-      const key = btn.dataset.addstat;
-      if(state.player.statPoints <= 0) return;
-      state.player.statPoints -= 1;
-      state.player.statsBase[key] += 1;
-      const dd = computeDerived(state);
-      state.player.hp = clamp(state.player.hp, 0, dd.hpMax);
-      saveState();
-      renderInfo();
-    };
-  });
-
-  screen.querySelectorAll("[data-unequip]").forEach(btn=>{
-    btn.onclick = ()=>{
-      const slot = btn.dataset.unequip;
-      state.equipped[slot] = null;
-      const dd = computeDerived(state);
-      state.player.hp = clamp(state.player.hp, 0, dd.hpMax);
-      saveState();
-      renderInfo();
-    };
-  });
-
-  screen.querySelectorAll("[data-equip]").forEach(btn=>{
-    btn.onclick = ()=>{
-      const itemId = btn.dataset.equip;
-      const it = ITEM_DB[itemId];
-      if(!it) return;
-      if(!state.inventory.includes(itemId)) return;
-      state.equipped[it.slot] = itemId;
-      const dd = computeDerived(state);
-      state.player.hp = clamp(state.player.hp, 0, dd.hpMax);
-      saveState();
-      renderInfo();
-    };
-  });
-
-  document.getElementById("saveNick").onclick = ()=>{
-    const nick = (document.getElementById("nick").value || "").trim() || "АНАР";
-    state.player.nick = nick.slice(0,16);
-    saveState();
-    renderInfo();
-  };
-
-  document.getElementById("reset").onclick = ()=>{
-    state = structuredClone(defaultState);
-    saveState();
-    renderCity();
-  };
-}
-
-function statRow(key, label, base, bonus, total){
-  const canAdd = state.player.statPoints > 0;
-  return `
-    <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px;">
-      <div>${label}: <b>${total}</b> <span class="pill">база ${base} + экип ${bonus}</span></div>
-      <div><button class="btn mini2" data-addstat="${key}" ${canAdd ? "" : "disabled"}>+1</button></div>
-    </div>
-  `;
-}
-function equipRow(slot, label){
-  const id = state.equipped[slot];
-  const name = id ? (ITEM_DB[id]?.name || id) : "—";
-  return `
-    <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px;">
-      <div>${label}: <b>${escapeHtml(name)}</b></div>
-      <div><button class="btn mini2" data-unequip="${slot}" ${id ? "" : "disabled"}>Снять</button></div>
-    </div>
-  `;
-}
-function renderInventoryList(){
-  if(state.inventory.length === 0){
-    return `<div class="small">Пусто. Купи предметы в магазине.</div>`;
-  }
-
-  return state.inventory.map(id=>{
-    const it = ITEM_DB[id];
-    if(!it) return "";
-    const eq = state.equipped[it.slot] === id;
-    return `
-      <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px;">
-        <div>
-          <b>${escapeHtml(it.name)}</b>
-          <div class="small">Слот: ${slotLabel(it.slot)} | ${escapeHtml(bonusesToText(it.bonuses))}</div>
-        </div>
-        <div>
-          <button class="btn mini2" data-equip="${it.id}" ${eq ? "disabled" : ""}>
-            ${eq ? "Надето" : "Надеть"}
-          </button>
-        </div>
-      </div>
-    `;
-  }).join("");
 }
 
 // ===== Start =====
