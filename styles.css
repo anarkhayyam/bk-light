@@ -99,3 +99,81 @@ body{
   color:var(--muted);
   line-height:1.35;
 }
+/* ====== BATTLEFIELD (поле боя) ====== */
+.battlefield{
+  display:grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  gap:10px;
+  align-items:stretch;
+}
+
+.fighter{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.fhead{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.avatar{
+  width:46px;
+  height:46px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:rgba(0,0,0,.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900;
+  color:var(--hit);
+}
+
+.fname{
+  font-weight:900;
+  line-height:1.1;
+}
+.fsub{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.hpbar{
+  height:10px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:rgba(0,0,0,.25);
+  overflow:hidden;
+}
+.hpfill{
+  height:100%;
+  width:50%;
+  background:rgba(202,167,106,.45);
+}
+
+.centerBox{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.centerTitle{
+  font-weight:900;
+  color:var(--hit);
+}
+
+.roundline{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.logBox{
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px;
+  background:rgba(0,0,0,.18);
+  min-height:90px;
+}
