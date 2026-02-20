@@ -110,7 +110,6 @@ function renderInfo(){
 function renderFight(){
   const p = state.player;
 
-  // один бой: игрок против бота
   let bot = {
     nick: "Бот",
     hpMax: 28,
@@ -121,14 +120,48 @@ function renderFight(){
   let selectedHit = null;
   let selectedBlock = null;
   let logLines = [];
+  let round = 1;
 
   screen.innerHTML = `
     <div class="card">
-      <h2 class="title">Бой 5×5</h2>
-      <div class="small">Выбери 1 зону удара и 1 зону блока. Потом жми “Раунд”.</div>
-      <div class="hr"></div>
-      <div>${escapeHtml(p.nick)} HP: <b id="php">${p.hp}</b> / ${p.hpMax}</div>
-      <div>${escapeHtml(bot.nick)} HP: <b id="bhp">${bot.hp}</b> / ${bot.hpMax}</div>
+      <h2 class="title">Поле боя</h2>
+
+      <div class="battlefield">
+        <!-- LEFT: Player -->
+        <div class="fighter">
+          <div class="fhead">
+            <div class="avatar">${escapeHtml((p.nick||"A")[0].toUpperCase())}</div>
+            <div>
+              <div class="fname">${escapeHtml(p.nick)}</div>
+              <div class="fsub">Уровень: ${p.level}</div>
+            </div>
+          </div>
+          <div class="hpbar"><div id="phpFill" class="hpfill"></div></div>
+          <div class="fsub">HP: <b id="php">${p.hp}</b> / ${p.hpMax}</div>
+        </div>
+
+        <!-- CENTER -->
+        <div class="centerBox">
+          <div class="centerTitle">Раунд: <span id="roundNum">${round}</span></div>
+          <div class="roundline">Выбери удар и блок → жми “Раунд”</div>
+          <div class="logBox">
+            <div id="log" class="log"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Bot -->
+        <div class="fighter">
+          <div class="fhead">
+            <div class="avatar">${escapeHtml((bot.nick||"B")[0].toUpperCase())}</div>
+            <div>
+              <div class="fname">${escapeHtml(bot.nick)}</div>
+              <div class="fsub">Противник</div>
+            </div>
+          </div>
+          <div class="hpbar"><div id="bhpFill" class="hpfill"></div></div>
+          <div class="fsub">HP: <b id="bhp">${bot.hp}</b> / ${bot.hpMax}</div>
+        </div>
+      </div>
     </div>
 
     <div class="grid2">
@@ -148,23 +181,120 @@ function renderFight(){
         <button class="btn" id="roundBtn">Раунд</button>
         <button class="btn" id="restBtn">Отдых</button>
       </div>
-      <div class="hr"></div>
-      <div id="log" class="log"></div>
     </div>
   `;
 
   const php = document.getElementById("php");
   const bhp = document.getElementById("bhp");
   const log = document.getElementById("log");
+  const roundNum = document.getElementById("roundNum");
+
+  const phpFill = document.getElementById("phpFill");
+  const bhpFill = document.getElementById("bhpFill");
+
+  function setHpBars(){
+    const pw = Math.max(0, Math.min(100, Math.round((p.hp / p.hpMax) * 100)));
+    const bw = Math.max(0, Math.min(100, Math.round((bot.hp / bot.hpMax) * 100)));
+    phpFill.style.width = pw + "%";
+    bhpFill.style.width = bw + "%";
+  }
 
   function renderLog(){
     log.innerHTML = logLines.map(l=>escapeHtml(l)).join("<br>");
   }
   function pushLog(t){
     logLines.unshift(t);
-    logLines = logLines.slice(0, 12);
+    logLines = logLines.slice(0, 10);
     renderLog();
   }
+
+  // выбор удара
+  screen.querySelectorAll("[data-hit]").forEach(btn=>{
+    btn.onclick = ()=>{
+      selectedHit = btn.dataset.hit;
+      screen.querySelectorAll("[data-hit]").forEach(b=>b.classList.remove("sel"));
+      btn.classList.add("sel");
+    };
+  });
+
+  // выбор блока
+  screen.querySelectorAll("[data-block]").forEach(btn=>{
+    btn.onclick = ()=>{
+      selectedBlock = btn.dataset.block;
+      screen.querySelectorAll("[data-block]").forEach(b=>b.classList.remove("sel"));
+      btn.classList.add("sel");
+    };
+  });
+
+  document.getElementById("restBtn").onclick = ()=>{
+    const gain = 2 + Math.floor(p.stats.end / 4);
+    p.hp = Math.min(p.hpMax, p.hp + gain);
+    php.textContent = p.hp;
+    saveState();
+    setHpBars();
+    pushLog(`Ты отдыхаешь: +${gain} HP.`);
+  };
+
+  document.getElementById("roundBtn").onclick = ()=>{
+    if(!selectedHit || !selectedBlock){
+      pushLog("Сначала выбери удар и блок.");
+      return;
+    }
+
+    const botHit = ZONES[Math.floor(Math.random()*ZONES.length)].id;
+    const botBlock = ZONES[Math.floor(Math.random()*ZONES.length)].id;
+
+    // Твой удар
+    const yourAttack = resolveAttack(p.stats, selectedHit, botBlock, bot.stats);
+    if(yourAttack.blocked){
+      pushLog(`Ты → ${zoneName(selectedHit)} (бот блок ${zoneName(botBlock)}).`);
+    } else if(yourAttack.isDodge){
+      pushLog(`Бот уклоняется от удара в ${zoneName(selectedHit)}!`);
+    } else {
+      bot.hp = Math.max(0, bot.hp - yourAttack.damage);
+      bhp.textContent = bot.hp;
+      pushLog(`${yourAttack.isCrit ? "КРИТ! " : ""}Ты попал в ${zoneName(selectedHit)}: -${yourAttack.damage}.`);
+    }
+
+    setHpBars();
+
+    if(bot.hp === 0){
+      pushLog("Победа! +10 опыта, +8 денег.");
+      rewardWin(p);
+      saveState();
+      return;
+    }
+
+    // Удар бота
+    const botAttack = resolveAttack(bot.stats, botHit, selectedBlock, p.stats);
+    if(botAttack.blocked){
+      pushLog(`Бот → ${zoneName(botHit)} (ты блок ${zoneName(selectedBlock)}).`);
+    } else if(botAttack.isDodge){
+      pushLog(`Ты уклоняешься от удара в ${zoneName(botHit)}!`);
+    } else {
+      p.hp = Math.max(0, p.hp - botAttack.damage);
+      php.textContent = p.hp;
+      pushLog(`${botAttack.isCrit ? "КРИТ БОТА! " : ""}Бот попал в ${zoneName(botHit)}: -${botAttack.damage}.`);
+      saveState();
+    }
+
+    setHpBars();
+
+    if(p.hp === 0){
+      pushLog("Ты проиграл. Восстановление до полного HP.");
+      p.hp = p.hpMax;
+      php.textContent = p.hp;
+      saveState();
+      setHpBars();
+    }
+
+    round += 1;
+    roundNum.textContent = round;
+  };
+
+  setHpBars();
+  renderLog();
+}
 
   // выбор удара
   screen.querySelectorAll("[data-hit]").forEach(btn=>{
