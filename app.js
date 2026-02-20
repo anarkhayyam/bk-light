@@ -221,7 +221,7 @@ function renderFight(){
     }
 
     // Удар бота
-    const botAttack = resolveAttack(bot.stats, botHit, selectedBlock);
+    const botAttack = resolveAttack(bot.stats, botHit, selectedBlock, p.stats);
     if(botAttack.blocked){
       pushLog(`Бот бьёт в ${zoneName(botHit)}, ты блокируешь (${zoneName(selectedBlock)}).`);
     } else {
