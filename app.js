@@ -203,14 +203,20 @@ function renderFight(){
     const botBlock = ZONES[Math.floor(Math.random()*ZONES.length)].id;
 
     // ТВОЙ удар
-    const yourAttack = resolveAttack(p.stats, selectedHit, botBlock, bot.stats);
     if(yourAttack.blocked){
-      pushLog(`Ты бьёшь в ${zoneName(selectedHit)}, но бот блокирует (${zoneName(botBlock)}).`);
-    } else {
-      bot.hp = Math.max(0, bot.hp - yourAttack.damage);
-      bhp.textContent = bot.hp;
-      pushLog(`Ты попал в ${zoneName(selectedHit)}: -${yourAttack.damage} HP боту.`);
-    }
+  pushLog(`Ты бьёшь в ${zoneName(selectedHit)}, но бот блокирует (${zoneName(botBlock)}).`);
+} else if(yourAttack.isDodge){
+  pushLog(`Бот уклоняется от удара в ${zoneName(selectedHit)}!`);
+} else {
+  bot.hp = Math.max(0, bot.hp - yourAttack.damage);
+  bhp.textContent = bot.hp;
+
+  if(yourAttack.isCrit){
+    pushLog(`КРИТ! Ты попал в ${zoneName(selectedHit)}: -${yourAttack.damage} HP.`);
+  } else {
+    pushLog(`Ты попал в ${zoneName(selectedHit)}: -${yourAttack.damage} HP.`);
+  }
+}
 
     // проверка победы
     if(bot.hp === 0){
@@ -221,16 +227,21 @@ function renderFight(){
     }
 
     // Удар бота
-    const botAttack = resolveAttack(bot.stats, botHit, selectedBlock, p.stats);
     if(botAttack.blocked){
-      pushLog(`Бот бьёт в ${zoneName(botHit)}, ты блокируешь (${zoneName(selectedBlock)}).`);
-    } else {
-      p.hp = Math.max(0, p.hp - botAttack.damage);
-      php.textContent = p.hp;
-      pushLog(`Бот попал в ${zoneName(botHit)}: -${botAttack.damage} HP тебе.`);
-      saveState();
-    }
+  pushLog(`Бот бьёт в ${zoneName(botHit)}, ты блокируешь (${zoneName(selectedBlock)}).`);
+} else if(botAttack.isDodge){
+  pushLog(`Ты уклоняешься от удара в ${zoneName(botHit)}!`);
+} else {
+  p.hp = Math.max(0, p.hp - botAttack.damage);
+  php.textContent = p.hp;
 
+  if(botAttack.isCrit){
+    pushLog(`КРИТ БОТА! Удар в ${zoneName(botHit)}: -${botAttack.damage} HP.`);
+  } else {
+    pushLog(`Бот попал в ${zoneName(botHit)}: -${botAttack.damage} HP.`);
+  }
+  saveState();
+}
     if(p.hp === 0){
       pushLog("Ты проиграл. Восстановление до полного HP.");
       p.hp = p.hpMax;
