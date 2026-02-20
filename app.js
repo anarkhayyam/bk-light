@@ -1,4 +1,4 @@
-const STORAGE_KEY = "antibk_light_save_v1";
+const STORAGE_KEY = "antibk_light_save_v3";
 
 const ZONES = [
   { id:"head",  name:"Голова" },
@@ -8,32 +8,71 @@ const ZONES = [
   { id:"legs",  name:"Ноги" },
 ];
 
+// ====== База предметов (можешь расширять) ======
+const ITEM_DB = {
+  tasbeh: { id:"tasbeh", slot:"amulet", name:"Təsbeh", price:25, bonuses:{ intu: +1 } },
+  sword:  { id:"sword",  slot:"weapon", name:"Короткий меч", price:20, bonuses:{ str: +1 } },
+  gloves: { id:"gloves", slot:"gloves", name:"Перчатки", price:15, bonuses:{ agi: +1 } },
+  armor:  { id:"armor",  slot:"armor",  name:"Кольчуга", price:30, bonuses:{ hpMax: +5 } },
+};
+
 const defaultState = {
   player: {
     nick: "АНАР",
     level: 1,
     exp: 0,
     money: 50,
-    hpMax: 30,
+    hpMaxBase: 30,     // базовый HP без экипа
     hp: 30,
-    stats: { str:3, agi:3, intu:3, end:3 },
+    statsBase: { str:3, agi:3, intu:3, end:3 }, // базовые статы
+    statPoints: 0,     // очки для распределения
     bio: "О себе: АНАР",
   },
-  inventory: [],
+  inventory: [],       // список itemId
+  equipped: {          // слоты
+    weapon: null,
+    armor: null,
+    gloves: null,
+    amulet: null,
+  },
 };
 
-function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
+// ====== утилиты ======
+function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+function zoneName(id){ return (ZONES.find(z=>z.id===id)?.name) || id; }
 
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return structuredClone(defaultState);
     const s = JSON.parse(raw);
+
+    // миграции/страховки
     if(!s.player) s.player = structuredClone(defaultState.player);
-    if(!s.player.stats) s.player.stats = structuredClone(defaultState.player.stats);
+    if(!s.player.statsBase) s.player.statsBase = structuredClone(defaultState.player.statsBase);
+    if(typeof s.player.hpMaxBase !== "number") s.player.hpMaxBase = 30;
+    if(typeof s.player.hp !== "number") s.player.hp = s.player.hpMaxBase;
+    if(typeof s.player.statPoints !== "number") s.player.statPoints = 0;
+    if(typeof s.player.money !== "number") s.player.money = 0;
+    if(typeof s.player.level !== "number") s.player.level = 1;
+    if(typeof s.player.exp !== "number") s.player.exp = 0;
+    if(typeof s.player.nick !== "string") s.player.nick = "АНАР";
+    if(typeof s.player.bio !== "string") s.player.bio = "О себе: АНАР";
+
     if(!Array.isArray(s.inventory)) s.inventory = [];
-    s.player.hpMax = typeof s.player.hpMax==="number" ? s.player.hpMax : 30;
-    s.player.hp = clamp(typeof s.player.hp==="number" ? s.player.hp : s.player.hpMax, 0, s.player.hpMax);
+    if(!s.equipped) s.equipped = structuredClone(defaultState.equipped);
+
+    // нормализуем слоты
+    for(const k of Object.keys(defaultState.equipped)){
+      if(!(k in s.equipped)) s.equipped[k] = null;
+    }
+
+    // обрезаем hp по текущему hpMax (с учётом экипа)
+    const d = computeDerived(s);
+    s.player.hp = clamp(s.player.hp, 0, d.hpMax);
+
     return s;
   }catch{
     return structuredClone(defaultState);
@@ -41,6 +80,38 @@ function loadState(){
 }
 function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
+function getEquippedItems(state){
+  const ids = Object.values(state.equipped).filter(Boolean);
+  return ids.map(id => ITEM_DB[id]).filter(Boolean);
+}
+
+function computeDerived(state){
+  const p = state.player;
+
+  // бонусы от экипа
+  const bonus = { str:0, agi:0, intu:0, end:0, hpMax:0 };
+  for(const it of getEquippedItems(state)){
+    const b = it.bonuses || {};
+    if(b.str) bonus.str += b.str;
+    if(b.agi) bonus.agi += b.agi;
+    if(b.intu) bonus.intu += b.intu;
+    if(b.end) bonus.end += b.end;
+    if(b.hpMax) bonus.hpMax += b.hpMax;
+  }
+
+  const stats = {
+    str: p.statsBase.str + bonus.str,
+    agi: p.statsBase.agi + bonus.agi,
+    intu: p.statsBase.intu + bonus.intu,
+    end: p.statsBase.end + bonus.end,
+  };
+
+  const hpMax = p.hpMaxBase + bonus.hpMax;
+
+  return { stats, hpMax, bonus };
+}
+
+// ====== UI базовые ======
 let state = loadState();
 
 const screen = document.getElementById("screen");
@@ -59,18 +130,16 @@ window.addEventListener("online", setNetBadge);
 window.addEventListener("offline", setNetBadge);
 setNetBadge();
 
-// Sync заготовка (сейчас без сервера просто покажет статус)
+// Заготовка SYNC (сервер позже)
 if(syncBtn){
   syncBtn.onclick = async () => {
-    // Позже ты просто вызовешь: API.setBaseUrl("https://...");
-    // Сейчас baseUrl пустой => покажет, что сервер не задан.
-    const res = await window.API.syncSave(state);
-    if(res.ok) alert("SYNC OK ✅");
+    const res = await window.API?.syncSave?.(state);
+    if(res?.ok) alert("SYNC OK ✅");
     else alert("SYNC пока не настроен (нет сервера).");
   };
 }
 
-// Навигация
+// навигация
 document.querySelectorAll(".tab").forEach(btn=>{
   btn.addEventListener("click", ()=>go(btn.dataset.go));
 });
@@ -83,20 +152,31 @@ function go(where){
   return renderCity();
 }
 
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
-function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
-function zoneName(id){ return (ZONES.find(z=>z.id===id)?.name) || id; }
+// маленький стиль
+(function ensureMiniStyle(){
+  if(document.getElementById("miniStyle")) return;
+  const st = document.createElement("style");
+  st.id = "miniStyle";
+  st.textContent = `
+    .btn.mini2{padding:6px 10px;font-size:12px}
+    .pill{display:inline-block;padding:2px 8px;border:1px solid #6b4b2a;border-radius:999px;font-size:12px;color:#cdbd9b}
+  `;
+  document.head.appendChild(st);
+})();
 
+// ====== Город ======
 function renderCity(){
   const p = state.player;
+  const d = computeDerived(state);
+
   screen.innerHTML = `
     <div class="card">
       <h2 class="title">Город</h2>
-      <div class="small">Офлайн. Сохранение в телефоне. Онлайн добавим через SYNC.</div>
+      <div class="small">Офлайн. Сохранение в телефоне. Онлайн потом через SYNC.</div>
       <div class="hr"></div>
       <div>Ник: <b>${escapeHtml(p.nick)}</b></div>
       <div>Уровень: <b>${p.level}</b> | Опыт: <b>${p.exp}</b> | Деньги: <b>${p.money}</b></div>
-      <div>HP: <b>${p.hp}/${p.hpMax}</b></div>
+      <div>HP: <b>${p.hp}/${d.hpMax}</b></div>
       <div class="hr"></div>
       <div class="row">
         <button class="btn" id="toFight">На арену</button>
@@ -104,25 +184,51 @@ function renderCity(){
         <button class="btn" id="toInfo">Инфо</button>
       </div>
     </div>
+
+    <div class="card">
+      <h3 class="title">Экипировка</h3>
+      <div class="small">Оружие: <b>${slotName("weapon")}</b></div>
+      <div class="small">Броня: <b>${slotName("armor")}</b></div>
+      <div class="small">Перчатки: <b>${slotName("gloves")}</b></div>
+      <div class="small">Амулет: <b>${slotName("amulet")}</b></div>
+    </div>
   `;
+
   document.getElementById("toFight").onclick = ()=>go("fight");
   document.getElementById("toShop").onclick = ()=>go("shop");
   document.getElementById("toInfo").onclick = ()=>go("info");
 }
 
+function slotName(slot){
+  const id = state.equipped[slot];
+  if(!id) return "—";
+  return ITEM_DB[id]?.name || id;
+}
+
+// ====== Инфо + статы + экип + инвентарь ======
 function renderInfo(){
   const p = state.player;
+  const d = computeDerived(state);
+
   screen.innerHTML = `
     <div class="card">
       <h2 class="title">Инфо</h2>
       <div>Ник: <b>${escapeHtml(p.nick)}</b></div>
-      <div>Уровень: <b>${p.level}</b> | Опыт: <b>${p.exp}</b></div>
-      <div>HP: <b>${p.hp}/${p.hpMax}</b> | Деньги: <b>${p.money}</b></div>
+      <div>Уровень: <b>${p.level}</b> | Опыт: <b>${p.exp}</b> | Деньги: <b>${p.money}</b></div>
+      <div>HP: <b>${p.hp}/${d.hpMax}</b> <span class="pill">HPmax база ${p.hpMaxBase} + экип ${d.bonus.hpMax}</span></div>
       <div class="hr"></div>
-      <div>Сила: <b>${p.stats.str}</b></div>
-      <div>Ловкость: <b>${p.stats.agi}</b></div>
-      <div>Интуиция: <b>${p.stats.intu}</b></div>
-      <div>Выносливость: <b>${p.stats.end}</b></div>
+
+      <div class="row" style="align-items:center;justify-content:space-between;">
+        <div><b>Распределение статов</b></div>
+        <div class="pill">Очки: <b>${p.statPoints}</b></div>
+      </div>
+      <div class="small">Итог = база + экипировка</div>
+
+      ${statRow("str","Сила", p.statsBase.str, d.bonus.str, d.stats.str)}
+      ${statRow("agi","Ловкость", p.statsBase.agi, d.bonus.agi, d.stats.agi)}
+      ${statRow("intu","Интуиция", p.statsBase.intu, d.bonus.intu, d.stats.intu)}
+      ${statRow("end","Выносливость", p.statsBase.end, d.bonus.end, d.stats.end)}
+
       <div class="hr"></div>
       <div><b>${escapeHtml(p.bio)}</b></div>
     </div>
@@ -132,17 +238,78 @@ function renderInfo(){
       <input class="input" id="nick" value="${escapeAttr(p.nick)}" maxlength="16" />
       <div class="row" style="margin-top:10px;">
         <button class="btn" id="saveNick">Сохранить</button>
-        <button class="btn" id="reset">Сбросить</button>
+        <button class="btn" id="reset">Сбросить всё</button>
       </div>
-      <div class="small" style="margin-top:8px;">Онлайн позже: будет логин + сервер.</div>
+    </div>
+
+    <div class="card">
+      <h3 class="title">Экипировка (слоты)</h3>
+      ${equipRow("weapon","Оружие")}
+      ${equipRow("armor","Броня")}
+      ${equipRow("gloves","Перчатки")}
+      ${equipRow("amulet","Амулет")}
+      <div class="small" style="margin-top:8px;">Нажми “Снять”, чтобы убрать предмет со слота.</div>
+    </div>
+
+    <div class="card">
+      <h3 class="title">Инвентарь</h3>
+      ${renderInventoryList()}
     </div>
   `;
+
+  // +1 статы
+  screen.querySelectorAll("[data-addstat]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const key = btn.dataset.addstat;
+      if(state.player.statPoints <= 0) return;
+      state.player.statPoints -= 1;
+      state.player.statsBase[key] += 1;
+
+      const dd = computeDerived(state);
+      state.player.hp = clamp(state.player.hp, 0, dd.hpMax);
+
+      saveState();
+      renderInfo();
+    };
+  });
+
+  // снять
+  screen.querySelectorAll("[data-unequip]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const slot = btn.dataset.unequip;
+      state.equipped[slot] = null;
+      const dd = computeDerived(state);
+      state.player.hp = clamp(state.player.hp, 0, dd.hpMax);
+      saveState();
+      renderInfo();
+    };
+  });
+
+  // надеть
+  screen.querySelectorAll("[data-equip]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const itemId = btn.dataset.equip;
+      const it = ITEM_DB[itemId];
+      if(!it) return;
+      if(!state.inventory.includes(itemId)) return;
+
+      state.equipped[it.slot] = itemId;
+
+      const dd = computeDerived(state);
+      state.player.hp = clamp(state.player.hp, 0, dd.hpMax);
+
+      saveState();
+      renderInfo();
+    };
+  });
+
   document.getElementById("saveNick").onclick = ()=>{
     const nick = (document.getElementById("nick").value || "").trim() || "АНАР";
     state.player.nick = nick.slice(0,16);
     saveState();
     renderInfo();
   };
+
   document.getElementById("reset").onclick = ()=>{
     state = structuredClone(defaultState);
     saveState();
@@ -150,49 +317,124 @@ function renderInfo(){
   };
 }
 
+function statRow(key, label, base, bonus, total){
+  const canAdd = state.player.statPoints > 0;
+  return `
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px;">
+      <div>${label}: <b>${total}</b> <span class="pill">база ${base} + экип ${bonus}</span></div>
+      <div>
+        <button class="btn mini2" data-addstat="${key}" ${canAdd ? "" : "disabled"}>+1</button>
+      </div>
+    </div>
+  `;
+}
+
+function equipRow(slot, label){
+  const id = state.equipped[slot];
+  const name = id ? (ITEM_DB[id]?.name || id) : "—";
+  return `
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px;">
+      <div>${label}: <b>${escapeHtml(name)}</b></div>
+      <div>
+        <button class="btn mini2" data-unequip="${slot}" ${id ? "" : "disabled"}>Снять</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderInventoryList(){
+  if(state.inventory.length === 0){
+    return `<div class="small">Пусто. Купи предметы в магазине.</div>`;
+  }
+
+  return state.inventory.map(id=>{
+    const it = ITEM_DB[id];
+    if(!it) return "";
+    const eq = state.equipped[it.slot] === id;
+    const bonusText = bonusesToText(it.bonuses);
+    return `
+      <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px;">
+        <div>
+          <b>${escapeHtml(it.name)}</b>
+          <div class="small">Слот: ${slotLabel(it.slot)} | ${escapeHtml(bonusText)}</div>
+        </div>
+        <div>
+          <button class="btn mini2" data-equip="${it.id}" ${eq ? "disabled" : ""}>
+            ${eq ? "Надето" : "Надеть"}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function slotLabel(slot){
+  return ({
+    weapon:"Оружие",
+    armor:"Броня",
+    gloves:"Перчатки",
+    amulet:"Амулет"
+  }[slot] || slot);
+}
+
+function bonusesToText(b){
+  const parts = [];
+  if(b.str) parts.push(`Сила ${fmtSigned(b.str)}`);
+  if(b.agi) parts.push(`Ловкость ${fmtSigned(b.agi)}`);
+  if(b.intu) parts.push(`Интуиция ${fmtSigned(b.intu)}`);
+  if(b.end) parts.push(`Выносливость ${fmtSigned(b.end)}`);
+  if(b.hpMax) parts.push(`HPmax ${fmtSigned(b.hpMax)}`);
+  return parts.join(", ") || "без бонусов";
+}
+function fmtSigned(n){ return (n>=0?`+${n}`:`${n}`); }
+
+// ====== Магазин ======
 function renderShop(){
   const p = state.player;
 
-  const items = [
-    { id:"tasbeh", name:"Təsbeh", price:25, apply:()=>{ p.stats.intu += 1; } },
-    { id:"sword",  name:"Короткий меч", price:20, apply:()=>{ p.stats.str += 1; } },
-    { id:"gloves", name:"Перчатки", price:15, apply:()=>{ p.stats.agi += 1; } },
-    { id:"armor",  name:"Кольчуга", price:30, apply:()=>{ p.hpMax += 5; p.hp = clamp(p.hp + 5, 0, p.hpMax); } },
-  ];
+  const items = Object.values(ITEM_DB);
 
   screen.innerHTML = `
     <div class="card">
       <h2 class="title">Магазин</h2>
       <div>Деньги: <b>${p.money}</b></div>
-      <div class="small">Покупки сохраняются локально.</div>
+      <div class="small">Купленные предметы попадают в Инвентарь.</div>
     </div>
 
-    ${items.map(it=>`
-      <div class="card">
-        <div><b>${it.name}</b> — ${it.price} 💰</div>
-        <div class="row" style="margin-top:10px;">
-          <button class="btn" data-buy="${it.id}">Купить</button>
+    ${items.map(it=>{
+      const owned = state.inventory.includes(it.id);
+      return `
+        <div class="card">
+          <div><b>${escapeHtml(it.name)}</b> — ${it.price} 💰</div>
+          <div class="small">Слот: ${slotLabel(it.slot)} | ${escapeHtml(bonusesToText(it.bonuses))}</div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn" data-buy="${it.id}" ${owned ? "disabled" : ""}>
+              ${owned ? "Куплено" : "Купить"}
+            </button>
+          </div>
         </div>
-      </div>
-    `).join("")}
+      `;
+    }).join("")}
   `;
 
   screen.querySelectorAll("[data-buy]").forEach(b=>{
     b.onclick = ()=>{
       const id = b.dataset.buy;
-      const it = items.find(x=>x.id===id);
+      const it = ITEM_DB[id];
       if(!it) return;
-      if(state.inventory.includes(id)) return alert("Уже куплено.");
+      if(state.inventory.includes(id)) return;
       if(p.money < it.price) return alert("Не хватает денег.");
+
       p.money -= it.price;
       state.inventory.push(id);
-      it.apply();
+
       saveState();
       renderShop();
     };
   });
 }
 
+// ====== Левел-ап (очки статов) ======
 function rewardWin(){
   const p = state.player;
   p.exp += 10;
@@ -201,17 +443,26 @@ function rewardWin(){
   while(p.exp >= p.level * 50){
     p.exp -= p.level * 50;
     p.level += 1;
-    p.hpMax += 5;
-    p.hp = p.hpMax;
-    // пока авто-рост, потом сделаем распределение очков
-    p.stats.str += 1; p.stats.agi += 1; p.stats.intu += 1; p.stats.end += 1;
-    alert(`Уровень повышен! Теперь уровень ${p.level}`);
+
+    // рост базы HP
+    p.hpMaxBase += 5;
+
+    // очки статов
+    p.statPoints += 3;
+
+    // восстановление hp до нового максимума (с учетом экипа)
+    const d = computeDerived(state);
+    p.hp = d.hpMax;
+
+    alert(`Уровень повышен! Теперь уровень ${p.level}. +3 очка статов.`);
   }
 }
 
+// ====== Бой (центр без лога) ======
 function renderFight(){
   const p = state.player;
 
+  // бот
   let bot = {
     nick:"Бот",
     hpMax: 28,
@@ -224,6 +475,8 @@ function renderFight(){
   let round = 1;
   let logLines = [];
   let finished = false;
+
+  const d = computeDerived(state);
 
   screen.innerHTML = `
     <div class="card">
@@ -239,12 +492,13 @@ function renderFight(){
             </div>
           </div>
           <div class="hpbar"><div id="phpFill" class="hpfill"></div></div>
-          <div class="fsub">HP: <b id="php">${p.hp}</b> / ${p.hpMax}</div>
+          <div class="fsub">HP: <b id="php">${p.hp}</b> / <span id="phpMax">${d.hpMax}</span></div>
         </div>
 
+        <!-- CENTER: пусто (без мини-лога) -->
         <div class="centerBox">
           <div class="centerTitle">Раунд: <span id="roundNum">${round}</span></div>
-          <div id="lastLine" class="roundline">Выбери удар и блок → жми “Раунд”.</div>
+          <div class="roundline">&nbsp;</div>
           <div class="row" style="margin-top:8px;">
             <button class="btn" id="newFightBtn" style="display:none;">Новый бой</button>
           </div>
@@ -277,9 +531,10 @@ function renderFight(){
 
     <div class="card">
       <div class="row">
-        <button class="btn" id="roundBtn">Раунд</button>
-        <button class="btn" id="restBtn">Отдых</button>
+        <button class="btn" id="fightBtn">Бой</button>
+        <button class="btn" id="restBtn" disabled>Отдых</button>
       </div>
+      <div class="small" style="margin-top:8px;">Отдых доступен только после окончания боя (восстановит HP полностью).</div>
     </div>
 
     <div class="card">
@@ -289,38 +544,46 @@ function renderFight(){
   `;
 
   const php = document.getElementById("php");
+  const phpMaxEl = document.getElementById("phpMax");
   const bhp = document.getElementById("bhp");
   const phpFill = document.getElementById("phpFill");
   const bhpFill = document.getElementById("bhpFill");
   const roundNum = document.getElementById("roundNum");
   const log = document.getElementById("log");
-  const lastLine = document.getElementById("lastLine");
   const newFightBtn = document.getElementById("newFightBtn");
-
-  const roundBtn = document.getElementById("roundBtn");
+  const fightBtn = document.getElementById("fightBtn");
   const restBtn = document.getElementById("restBtn");
 
-  function setBars(){
-    phpFill.style.width = clamp(Math.round((p.hp/p.hpMax)*100),0,100) + "%";
+  function refreshDerived(){
+    const dd = computeDerived(state);
+    phpMaxEl.textContent = dd.hpMax;
+    state.player.hp = clamp(state.player.hp, 0, dd.hpMax);
+    php.textContent = state.player.hp;
+    saveState();
+    return dd;
+  }
+
+  function setBars(dd){
+    phpFill.style.width = clamp(Math.round((state.player.hp/dd.hpMax)*100),0,100) + "%";
     bhpFill.style.width = clamp(Math.round((bot.hp/bot.hpMax)*100),0,100) + "%";
   }
-  function renderFullLog(){
-    log.innerHTML = logLines.map(escapeHtml).join("<br>");
-  }
+
+  function renderFullLog(){ log.innerHTML = logLines.map(escapeHtml).join("<br>"); }
   function pushLog(t){
-    lastLine.textContent = t;
     logLines.unshift(t);
     logLines = logLines.slice(0, 14);
     renderFullLog();
   }
+
   function finishBattle(t){
     finished = true;
-    roundBtn.disabled = true;
-    restBtn.disabled = true;
+    fightBtn.disabled = true;
+    restBtn.disabled = false;
     newFightBtn.style.display = "inline-block";
     pushLog(t);
   }
 
+  // выбор удар/блок
   screen.querySelectorAll("[data-hit]").forEach(btn=>{
     btn.onclick = ()=>{
       selectedHit = btn.dataset.hit;
@@ -336,22 +599,27 @@ function renderFight(){
     };
   });
 
+  // Отдых: только после боя, лечит полностью
   restBtn.onclick = ()=>{
-    if(finished) return;
-    const gain = 2 + Math.floor(p.stats.end/4);
-    p.hp = clamp(p.hp + gain, 0, p.hpMax);
-    php.textContent = p.hp;
+    if(!finished) return;
+    const dd = refreshDerived();
+    state.player.hp = dd.hpMax;
+    php.textContent = state.player.hp;
     saveState();
-    setBars();
-    pushLog(`Отдых: +${gain} HP.`);
+    setBars(dd);
+    pushLog(`Отдых: HP восстановлено полностью (${dd.hpMax}).`);
   };
 
-  roundBtn.onclick = ()=>{
+  // Бой
+  fightBtn.onclick = ()=>{
     if(finished) return;
+
     if(!selectedHit || !selectedBlock){
       pushLog("Сначала выбери удар и блок.");
       return;
     }
+
+    const dd = refreshDerived();
 
     const botHit = ZONES[Math.floor(Math.random()*5)].id;
     const botBlock = ZONES[Math.floor(Math.random()*5)].id;
@@ -360,15 +628,17 @@ function renderFight(){
     if(selectedHit === botBlock){
       pushLog(`Раунд ${round}: Ты → ${zoneName(selectedHit)}. Бот блокирует.`);
     } else {
-      const dmg = 4 + Math.floor(p.stats.str/2);
+      const dmg = 4 + Math.floor(dd.stats.str/2);
       bot.hp = clamp(bot.hp - dmg, 0, bot.hpMax);
       bhp.textContent = bot.hp;
       pushLog(`Раунд ${round}: Ты → ${zoneName(selectedHit)}. Попадание (-${dmg}).`);
     }
-    setBars();
+    setBars(dd);
 
     if(bot.hp === 0){
       rewardWin();
+      const dd2 = refreshDerived();
+      setBars(dd2);
       saveState();
       finishBattle("Бой окончен: Победа ✅ (+10 опыта, +8 денег)");
       return;
@@ -379,15 +649,15 @@ function renderFight(){
       pushLog(`Раунд ${round}: Бот → ${zoneName(botHit)}. Ты блокируешь.`);
     } else {
       const dmg = 3 + Math.floor(bot.stats.str/2);
-      p.hp = clamp(p.hp - dmg, 0, p.hpMax);
-      php.textContent = p.hp;
+      state.player.hp = clamp(state.player.hp - dmg, 0, dd.hpMax);
+      php.textContent = state.player.hp;
       saveState();
       pushLog(`Раунд ${round}: Бот → ${zoneName(botHit)}. Попадание (-${dmg}).`);
     }
-    setBars();
+    setBars(dd);
 
-    if(p.hp === 0){
-      finishBattle("Бой окончен: Поражение ❌ (HP восстановим в новом бою)");
+    if(state.player.hp === 0){
+      finishBattle("Бой окончен: Поражение ❌ (нажми Отдых для полного восстановления)");
       return;
     }
 
@@ -396,12 +666,11 @@ function renderFight(){
   };
 
   newFightBtn.onclick = ()=>{
-    state.player.hp = state.player.hpMax;
-    saveState();
     renderFight();
   };
 
-  setBars();
+  const dd0 = computeDerived(state);
+  setBars(dd0);
   pushLog("Готов к бою.");
 }
 
