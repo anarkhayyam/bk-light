@@ -203,7 +203,7 @@ function renderFight(){
     const botBlock = ZONES[Math.floor(Math.random()*ZONES.length)].id;
 
     // ТВОЙ удар
-    const yourAttack = resolveAttack(p.stats, selectedHit, botBlock);
+    const yourAttack = resolveAttack(p.stats, selectedHit, botBlock, bot.stats);
     if(yourAttack.blocked){
       pushLog(`Ты бьёшь в ${zoneName(selectedHit)}, но бот блокирует (${zoneName(botBlock)}).`);
     } else {
