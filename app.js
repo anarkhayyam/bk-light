@@ -1,4 +1,4 @@
-const STORAGE_KEY = "bk_light_v3";
+const STORAGE_KEY = "bk_light_v4";
 
 const ZONES = [
   { id: "head", name: "Голова" },
@@ -26,10 +26,22 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(defaultState);
     const s = JSON.parse(raw);
-    // подстраховка
-    if (!s?.player?.stats) s.player.stats = structuredClone(defaultState.player.stats);
-    if (typeof s?.player?.hpMax !== "number") s.player.hpMax = 30;
-    if (typeof s?.player?.hp !== "number") s.player.hp = s.player.hpMax;
+
+    // подстраховка структуры
+    if (!s.player) s.player = structuredClone(defaultState.player);
+    if (!s.player.stats) s.player.stats = structuredClone(defaultState.player.stats);
+
+    if (typeof s.player.hpMax !== "number") s.player.hpMax = defaultState.player.hpMax;
+    if (typeof s.player.hp !== "number") s.player.hp = s.player.hpMax;
+    if (typeof s.player.level !== "number") s.player.level = 1;
+    if (typeof s.player.exp !== "number") s.player.exp = 0;
+    if (typeof s.player.money !== "number") s.player.money = 0;
+    if (typeof s.player.nick !== "string") s.player.nick = "АНАР";
+    if (typeof s.player.bio !== "string") s.player.bio = "О себе: АНАР";
+
+    // clamp hp
+    s.player.hp = clamp(s.player.hp, 0, s.player.hpMax);
+
     return s;
   } catch {
     return structuredClone(defaultState);
@@ -38,6 +50,9 @@ function loadState() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
 
 let state = loadState();
 
@@ -45,8 +60,8 @@ const screen = document.getElementById("screen");
 const netBadge = document.getElementById("netBadge");
 
 function setNetBadge() {
-  const online = navigator.onLine;
   if (!netBadge) return;
+  const online = navigator.onLine;
   netBadge.textContent = online ? "ONLINE" : "OFFLINE";
   netBadge.classList.toggle("online", online);
   netBadge.classList.toggle("offline", !online);
@@ -76,10 +91,7 @@ function zoneName(id) {
   return z ? z.name : id;
 }
 
-function clamp(n, a, b) {
-  return Math.max(a, Math.min(b, n));
-}
-
+/* ===================== INFO ===================== */
 function renderInfo() {
   const p = state.player;
 
@@ -87,7 +99,7 @@ function renderInfo() {
     <div class="card">
       <h2 class="title">Инфо</h2>
       <div>Ник: <b>${escapeHtml(p.nick)}</b></div>
-      <div>Уровень: <b>${p.level}</b> | Опыт: <b>${p.exp}</b></div>
+      <div>Уровень: <b>${p.level}</b> | Опыт: <b>${p.exp}</b> | Деньги: <b>${p.money}</b></div>
       <div>HP: <b>${p.hp}/${p.hpMax}</b></div>
       <div class="hr"></div>
       <div>Сила: <b>${p.stats.str}</b></div>
@@ -105,14 +117,14 @@ function renderInfo() {
         <button class="btn" id="saveNick">Сохранить</button>
         <button class="btn" id="resetAll">Сбросить всё</button>
       </div>
-      <div class="small" style="margin-top:8px;">Это офлайн версия. Потом добавим онлайн.</div>
+      <div class="small" style="margin-top:8px;">Офлайн версия. Потом добавим онлайн.</div>
     </div>
   `;
 
   ensureInputStyle();
 
   document.getElementById("saveNick").onclick = () => {
-    const nick = document.getElementById("nick").value.trim() || "АНАР";
+    const nick = (document.getElementById("nick").value || "").trim() || "АНАР";
     state.player.nick = nick.slice(0, 16);
     saveState();
     renderInfo();
@@ -125,6 +137,7 @@ function renderInfo() {
   };
 }
 
+/* ===================== FIGHT ===================== */
 function renderFight() {
   const p = state.player;
 
@@ -161,10 +174,10 @@ function renderFight() {
           <div class="fsub">HP: <b id="php">${p.hp}</b> / ${p.hpMax}</div>
         </div>
 
-        <!-- CENTER -->
+        <!-- CENTER (мини-лог) -->
         <div class="centerBox">
           <div class="centerTitle">Раунд: <span id="roundNum">${round}</span></div>
-          <div class="logBox"><div id="log" class="log"></div></div>
+          <div id="lastLine" class="roundline">Выбери удар и блок → жми “Раунд”.</div>
           <div class="row" style="margin-top:8px;">
             <button class="btn" id="newFightBtn" style="display:none;">Новый бой</button>
           </div>
@@ -204,6 +217,14 @@ function renderFight() {
       </div>
       <div class="small" style="margin-top:8px;">Выбери 1 удар и 1 блок. Потом жми “Раунд”.</div>
     </div>
+
+    <!-- ЛОГ ПОД КНОПКАМИ -->
+    <div class="card">
+      <h3 class="title">Лог боя</h3>
+      <div class="logBox">
+        <div id="log" class="log"></div>
+      </div>
+    </div>
   `;
 
   const php = document.getElementById("php");
@@ -211,7 +232,9 @@ function renderFight() {
   const phpFill = document.getElementById("phpFill");
   const bhpFill = document.getElementById("bhpFill");
   const roundNum = document.getElementById("roundNum");
+
   const log = document.getElementById("log");
+  const lastLine = document.getElementById("lastLine");
 
   const roundBtn = document.getElementById("roundBtn");
   const restBtn = document.getElementById("restBtn");
@@ -224,10 +247,15 @@ function renderFight() {
     bhpFill.style.width = bw + "%";
   }
 
-  function pushLog(t) {
-    logLines.unshift(t);
-    logLines = logLines.slice(0, 10);
+  function renderFullLog() {
     log.innerHTML = logLines.map(escapeHtml).join("<br>");
+  }
+
+  function pushLog(t) {
+    lastLine.textContent = t;
+    logLines.unshift(t);
+    logLines = logLines.slice(0, 14);
+    renderFullLog();
   }
 
   function finishBattle(resultText) {
@@ -245,7 +273,6 @@ function renderFight() {
   }
 
   function calcDamage(att) {
-    // простая формула (потом улучшим): сила влияет
     return 4 + Math.floor(att.stats.str / 2);
   }
 
@@ -274,7 +301,7 @@ function renderFight() {
     php.textContent = p.hp;
     saveState();
     setBars();
-    pushLog(`Ты отдыхаешь: +${gain} HP.`);
+    pushLog(`Отдых: +${gain} HP.`);
   };
 
   roundBtn.onclick = () => {
@@ -299,24 +326,22 @@ function renderFight() {
     setBars();
 
     if (bot.hp === 0) {
-      // награда
       state.player.exp += 10;
       state.player.money += 8;
-      pushLog("Победа! +10 опыта, +8 денег.");
       saveState();
-      finishBattle("Бой окончен: Победа ✅");
+      finishBattle("Бой окончен: Победа ✅ (+10 опыта, +8 денег)");
       return;
     }
 
     // БОТ АТАКУЕТ
     if (botMove.hit === selectedBlock) {
-      pushLog(`Бот → ${zoneName(botMove.hit)}. Ты блокируешь (${zoneName(selectedBlock)}).`);
+      pushLog(`Раунд ${round}: Бот → ${zoneName(botMove.hit)}. Ты блокируешь (${zoneName(selectedBlock)}).`);
     } else {
       const dmg = 3 + Math.floor(bot.stats.str / 2);
       p.hp = clamp(p.hp - dmg, 0, p.hpMax);
       php.textContent = p.hp;
-      pushLog(`Бот → ${zoneName(botMove.hit)}. Попадание (-${dmg}).`);
       saveState();
+      pushLog(`Раунд ${round}: Бот → ${zoneName(botMove.hit)}. Попадание (-${dmg}).`);
     }
 
     setBars();
@@ -331,7 +356,6 @@ function renderFight() {
   };
 
   newFightBtn.onclick = () => {
-    // восстановим HP игроку до полного на новый бой (по-лайту)
     state.player.hp = state.player.hpMax;
     saveState();
     renderFight();
@@ -341,6 +365,7 @@ function renderFight() {
   pushLog("Готов к бою.");
 }
 
+/* ===================== helpers/styles ===================== */
 function ensureInputStyle() {
   if (document.getElementById("bkInputStyle")) return;
   const style = document.createElement("style");
