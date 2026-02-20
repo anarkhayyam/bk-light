@@ -1,3 +1,4 @@
+console.log("APP STARTED");
 const STORAGE_KEY = "bk_light_save_v2";
 
 const ZONES = [
