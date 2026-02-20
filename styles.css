@@ -27,7 +27,9 @@ body{
   border-bottom:1px solid var(--line);
   display:flex; align-items:center; justify-content:space-between;
 }
-.logo{font-weight:800; letter-spacing:.4px}
+.logo{font-weight:900; letter-spacing:.4px}
+.right{display:flex; align-items:center; gap:8px}
+
 .badge{
   font-size:12px; padding:4px 8px; border:1px solid var(--line); border-radius:999px;
 }
@@ -44,15 +46,27 @@ body{
   margin-bottom:12px;
 }
 
-.title{font-weight:800; margin:0 0 8px 0;}
+.title{font-weight:900; margin:0 0 8px 0;}
 .small{color:var(--muted); font-size:12px}
 .hr{height:1px; background:var(--line); margin:10px 0}
 
 .row{display:flex; gap:10px; flex-wrap:wrap}
+
 .btn{
   padding:10px 12px; border-radius:10px; border:1px solid var(--line);
   background:linear-gradient(180deg,var(--btn2),var(--btn));
-  color:var(--text); font-weight:800;
+  color:var(--text); font-weight:900;
+}
+.btn.mini{padding:6px 10px; font-size:12px}
+
+.input{
+  width:100%;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:rgba(0,0,0,.25);
+  color:var(--text);
+  outline:none;
 }
 
 .bottombar{
@@ -62,23 +76,13 @@ body{
 }
 .tab{
   flex:1; padding:10px 8px; border-radius:10px; border:1px solid var(--line);
-  background:rgba(0,0,0,.25); color:var(--text); font-weight:800;
+  background:rgba(0,0,0,.25); color:var(--text); font-weight:900;
 }
 
-.grid2{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px;
-}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 
-.zone{
-  display:flex; flex-direction:column; gap:8px;
-}
-
-.zone .ztitle{
-  font-weight:800;
-  color:var(--hit);
-}
+.zone{display:flex; flex-direction:column; gap:8px;}
+.zone .ztitle{font-weight:900; color:var(--hit);}
 
 .zbtn{
   text-align:left;
@@ -87,113 +91,46 @@ body{
   border:1px solid var(--line);
   background:rgba(0,0,0,.22);
   color:var(--text);
-  font-weight:700;
+  font-weight:800;
 }
 .zbtn.sel{
   outline:2px solid var(--hit);
   background:rgba(202,167,106,.12);
 }
 
-.log{
-  font-size:12px;
-  color:var(--muted);
-  line-height:1.35;
-}
-/* ====== BATTLEFIELD (поле боя) ====== */
+/* поле боя */
 .battlefield{
   display:grid;
   grid-template-columns: 1fr 1.2fr 1fr;
   gap:10px;
   align-items:stretch;
 }
-
-.fighter{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-}
-
-.fhead{
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
-
+.fighter{display:flex; flex-direction:column; gap:8px;}
+.fhead{display:flex; align-items:center; gap:10px;}
 .avatar{
-  width:46px;
-  height:46px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:rgba(0,0,0,.25);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight:900;
-  color:var(--hit);
+  width:46px;height:46px;border-radius:12px;border:1px solid var(--line);
+  background:rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;
+  font-weight:900;color:var(--hit);
 }
-
-.fname{
-  font-weight:900;
-  line-height:1.1;
-}
-.fsub{
-  font-size:12px;
-  color:var(--muted);
-}
+.fname{font-weight:900; line-height:1.1;}
+.fsub{font-size:12px; color:var(--muted);}
 
 .hpbar{
-  height:10px;
-  border-radius:999px;
-  border:1px solid var(--line);
-  background:rgba(0,0,0,.25);
-  overflow:hidden;
+  height:10px;border-radius:999px;border:1px solid var(--line);
+  background:rgba(0,0,0,.25);overflow:hidden;
 }
-.hpfill{
-  height:100%;
-  width:50%;
-  background:rgba(202,167,106,.45);
-}
+.hpfill{height:100%;width:50%;background:rgba(202,167,106,.45);}
 
-.centerBox{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-}
-
-.centerTitle{
-  font-weight:900;
-  color:var(--hit);
-}
-
-.roundline{
-  font-size:12px;
-  color:var(--muted);
-}
+.centerBox{display:flex; flex-direction:column; gap:8px;}
+.centerTitle{font-weight:900;color:var(--hit);}
+.roundline{font-size:12px;color:var(--muted);}
 
 .logBox{
   border:1px solid var(--line);
   border-radius:10px;
   padding:10px;
   background:rgba(0,0,0,.18);
-  min-height:90px;
+  max-height:180px;
+  overflow-y:auto;
 }
-/* ===== ЛОГ БОЯ С ПРОКРУТКОЙ ===== */
-
-.logBox{
-  max-height: 180px;      /* высота окна лога */
-  overflow-y: auto;       /* вертикальный скролл */
-  scrollbar-width: thin;  /* тонкий скролл (Firefox) */
-}
-
-/* для Safari / Chrome */
-.logBox::-webkit-scrollbar{
-  width: 6px;
-}
-.logBox::-webkit-scrollbar-track{
-  background: rgba(0,0,0,0.2);
-  border-radius: 10px;
-}
-.logBox::-webkit-scrollbar-thumb{
-  background: rgba(202,167,106,0.6);
-  border-radius: 10px;
-}
+.log{font-size:12px;color:var(--muted);line-height:1.35;}
